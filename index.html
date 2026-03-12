@@ -79,27 +79,57 @@ section{position:relative;z-index:1}
 
 /* === MINDMAP === */
 #mindmap{padding:120px 0;background:var(--s1);border-top:1px solid var(--b1);border-bottom:1px solid var(--b1)}
-.mindmap-canvas{position:relative;width:100%;height:800px;overflow:hidden;border-radius:12px;border:1px solid var(--b1);background:var(--bg)}
-.mindmap-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
-.mindmap-svg line{stroke-dasharray:6 4;opacity:.3;transition:opacity .3s}
-.mindmap-svg line.active{opacity:.8;stroke-dasharray:none}
-.mindmap-svg line.cross{stroke-dasharray:3 6;opacity:.15}
+.mindmap-canvas{position:relative;width:100%;min-height:700px;overflow:visible;border-radius:12px;border:1px solid var(--b1);background:var(--bg);padding:40px 20px}
+.mindmap-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0}
+.mindmap-svg path{fill:none;stroke-width:1.5;opacity:.35;transition:opacity .4s,stroke-width .4s}
+.mindmap-svg path.active{opacity:.8;stroke-width:2.5}
+.mindmap-svg path.cross{stroke-dasharray:6 4;opacity:.15;stroke-width:1}
+.mindmap-svg path.cross.active{opacity:.5;stroke-width:1.5}
+.mindmap-svg .glow-dot{opacity:0;transition:opacity .4s}
+.mindmap-svg .glow-dot.active{opacity:1}
 
-.mm-node{position:absolute;transform:translate(-50%,-50%);cursor:pointer;transition:all .3s;z-index:2}
-.mm-node:hover{transform:translate(-50%,-50%) scale(1.08);z-index:10}
-.mm-node:hover .mm-ring{opacity:1}
-
-.mm-center{width:120px;height:120px;border-radius:50%;background:linear-gradient(135deg,var(--s2),var(--s3));border:2px solid var(--accent);display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 0 0 8px rgba(59,130,246,.08),0 0 40px rgba(59,130,246,.1)}
-.mm-center-name{font-family:var(--fd);font-size:.75rem;font-weight:800;color:var(--tp)}
+/* Center hub */
+.mm-hub{position:absolute;z-index:10;transform:translate(-50%,-50%)}
+.mm-center{width:110px;height:110px;border-radius:50%;background:linear-gradient(135deg,var(--s2),var(--s3));border:2px solid var(--accent);display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 0 0 6px rgba(59,130,246,.08),0 0 30px rgba(59,130,246,.12),0 0 80px rgba(59,130,246,.05);transition:box-shadow .3s}
+.mm-center:hover{box-shadow:0 0 0 8px rgba(59,130,246,.15),0 0 50px rgba(59,130,246,.2)}
+.mm-center-name{font-family:var(--fd);font-size:.8rem;font-weight:800;color:var(--tp)}
 .mm-center-sub{font-family:var(--fm);font-size:.45rem;color:var(--tt);letter-spacing:.1em;text-transform:uppercase;margin-top:2px}
 
-.mm-cluster{padding:8px 16px;border-radius:8px;background:var(--s2);border:1px solid var(--b1);display:flex;align-items:center;gap:8px;white-space:nowrap}
-.mm-cluster i{width:16px;height:16px;flex-shrink:0}
-.mm-cluster-label{font-family:var(--fm);font-size:.6rem;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--tp)}
-.mm-ring{position:absolute;inset:-8px;border-radius:12px;border:1px solid currentColor;opacity:0;transition:opacity .3s;pointer-events:none}
+/* Cluster nodes */
+.mm-node{position:absolute;transform:translate(-50%,-50%);cursor:pointer;transition:all .35s cubic-bezier(.4,0,.2,1);z-index:5}
+.mm-node:hover{transform:translate(-50%,-50%) scale(1.06);z-index:20}
+.mm-cluster{padding:10px 18px;border-radius:10px;background:var(--s2);border:1px solid;display:flex;align-items:center;gap:10px;white-space:nowrap;transition:all .3s;position:relative;overflow:visible}
+.mm-cluster::before{content:'';position:absolute;inset:-3px;border-radius:13px;border:1.5px solid transparent;transition:border-color .3s,box-shadow .3s;pointer-events:none}
+.mm-node:hover .mm-cluster::before{border-color:currentColor;box-shadow:0 0 20px currentColor}
+.mm-cluster i{width:18px;height:18px;flex-shrink:0}
+.mm-cluster-label{font-family:var(--fm);font-size:.65rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--tp)}
 
-.mm-leaf{padding:5px 10px;border-radius:6px;background:rgba(6,8,15,.85);border:1px solid var(--b2);font-family:var(--fm);font-size:.5rem;letter-spacing:.06em;text-transform:uppercase;color:var(--tt);white-space:nowrap;backdrop-filter:blur(4px)}
-.mm-leaf:hover{color:var(--tp);border-color:var(--b3)}
+/* Leaf nodes */
+.mm-leaf-node{position:absolute;transform:translate(-50%,-50%);z-index:3;transition:all .3s}
+.mm-leaf-node:hover{transform:translate(-50%,-50%) scale(1.1);z-index:15}
+.mm-leaf{padding:6px 12px;border-radius:8px;background:rgba(11,17,32,.9);border:1px solid;font-family:var(--fm);font-size:.55rem;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap;backdrop-filter:blur(6px);transition:all .3s;cursor:pointer}
+.mm-leaf:hover{background:rgba(11,17,32,1);transform:none}
+
+/* Responsive: large screens get bigger canvas */
+@media(min-width:1024px){
+  .mindmap-canvas{min-height:800px;padding:60px 40px}
+}
+@media(max-width:640px){
+  .mindmap-canvas{min-height:auto;padding:0;border:none;background:transparent;overflow:visible}
+  .mindmap-svg{display:none}
+  .mm-hub,.mm-node,.mm-leaf-node{position:static!important;transform:none!important}
+  .mm-center{width:80px;height:80px;margin:0 auto 32px}
+  .mm-center-name{font-size:.7rem}
+  /* Mobile: vertical card layout */
+  .mm-mobile-layout{display:flex;flex-direction:column;gap:20px}
+  .mm-mobile-cluster{background:var(--s2);border:1px solid var(--b1);border-radius:12px;padding:20px;transition:border-color .3s}
+  .mm-mobile-cluster-header{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+  .mm-mobile-cluster-header i{width:18px;height:18px;flex-shrink:0}
+  .mm-mobile-cluster-header span{font-family:var(--fm);font-size:.7rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--tp)}
+  .mm-mobile-leaves{display:flex;flex-wrap:wrap;gap:8px}
+  .mm-mobile-leaf{padding:5px 11px;border-radius:6px;border:1px solid;font-family:var(--fm);font-size:.55rem;letter-spacing:.04em;text-transform:uppercase;background:var(--bg);transition:all .2s;cursor:pointer}
+  .mm-mobile-leaf:hover{background:var(--s3)}
+}
 
 /* === CARDS === */
 .card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:24px}
@@ -265,7 +295,7 @@ footer p{font-family:var(--fm);font-size:.6rem;color:var(--tg);letter-spacing:.1
   .epochs-timeline{grid-template-columns:repeat(2,1fr);gap:24px}
   .epochs-timeline::before{display:none}
   .nodes-grid{grid-template-columns:repeat(4,1fr)}
-  .mindmap-canvas{height:600px}
+  .mindmap-canvas{min-height:700px}
   .barbell-visual{flex-direction:column}
   .barbell-bar{width:4px;height:40px}
   .arch-visual{grid-template-columns:1fr}
@@ -279,11 +309,51 @@ footer p{font-family:var(--fm);font-size:.6rem;color:var(--tg);letter-spacing:.1
   .financial-strip{grid-template-columns:repeat(2,1fr)}
   .nodes-grid{grid-template-columns:repeat(3,1fr)}
   .nav-links{display:none}
-  .mindmap-canvas{height:500px;overflow:auto}
+  .mindmap-canvas{min-height:auto;overflow:visible}
 }
 </style>
 </head>
 <body>
+
+<!-- PASSWORD GATE -->
+<div id="passwordGate" style="position:fixed;inset:0;z-index:9999;background:#06080f;display:flex;align-items:center;justify-content:center">
+  <div style="text-align:center;max-width:400px;padding:40px">
+    <div style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,rgba(59,130,246,.15),rgba(139,92,246,.15));border:1px solid rgba(59,130,246,.2);display:flex;align-items:center;justify-content:center;margin:0 auto 24px">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+    </div>
+    <h1 style="font-family:'Syne',sans-serif;font-size:1.4rem;font-weight:800;color:#fff;margin-bottom:8px">Antonio<span style="color:#3b82f6">.</span>OS</h1>
+    <p style="font-family:'IBM Plex Mono',monospace;font-size:.6rem;color:#4a6585;letter-spacing:.15em;text-transform:uppercase;margin-bottom:32px">Intelligence Hub — Restricted Access</p>
+    <form id="passwordForm" onsubmit="return checkPassword()" style="display:flex;flex-direction:column;gap:12px">
+      <input id="passwordInput" type="password" placeholder="Enter password" autocomplete="off" autofocus
+        style="width:100%;padding:14px 18px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(11,17,32,.8);color:#fff;font-family:'IBM Plex Mono',monospace;font-size:.85rem;outline:none;transition:border-color .2s"
+        onfocus="this.style.borderColor='rgba(59,130,246,.4)'" onblur="this.style.borderColor='rgba(255,255,255,.1)'">
+      <button type="submit"
+        style="padding:14px;border-radius:8px;border:none;background:linear-gradient(135deg,#3b82f6,#2563eb);color:#fff;font-family:'Syne',sans-serif;font-weight:700;font-size:.85rem;cursor:pointer;transition:opacity .2s;letter-spacing:.02em"
+        onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">Access Hub</button>
+      <p id="passwordError" style="font-family:'IBM Plex Mono',monospace;font-size:.6rem;color:#ef4444;display:none;margin-top:4px">Access denied. Incorrect password.</p>
+    </form>
+  </div>
+</div>
+
+<script>
+function checkPassword() {
+  const input = document.getElementById('passwordInput').value;
+  if (input === 'changeme') {
+    document.getElementById('passwordGate').style.display = 'none';
+    sessionStorage.setItem('antonioOS_auth', 'true');
+    return false;
+  }
+  document.getElementById('passwordError').style.display = 'block';
+  document.getElementById('passwordInput').value = '';
+  document.getElementById('passwordInput').style.borderColor = '#ef4444';
+  setTimeout(() => { document.getElementById('passwordInput').style.borderColor = 'rgba(255,255,255,.1)'; }, 1500);
+  return false;
+}
+// Auto-unlock if already authenticated in this session
+if (sessionStorage.getItem('antonioOS_auth') === 'true') {
+  document.getElementById('passwordGate').style.display = 'none';
+}
+</script>
 
 <!-- NAV -->
 <nav>
