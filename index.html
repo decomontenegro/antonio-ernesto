@@ -974,6 +974,12 @@ document.addEventListener('DOMContentLoaded', () => {
   lucide.createIcons();
   buildMindmap();
   setupIntersectionObserver();
+  // Rebuild mindmap on resize (debounced)
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(buildMindmap, 300);
+  });
 });
 
 // Stack toggle
@@ -994,146 +1000,235 @@ function setupIntersectionObserver() {
   document.querySelectorAll('.fade-in').forEach(el => obs.observe(el));
 }
 
-// Neural Mindmap
+// Neural Mindmap — v2 (clean connections, mobile-first)
 function buildMindmap() {
   const canvas = document.getElementById('mindmapCanvas');
   const svg = document.getElementById('mindmapSvg');
+  const isMobile = window.innerWidth <= 640;
+
+  const clusters = [
+    { id:'health', label:'Health OS', icon:'heart', color:'#10b981', angle:-90,
+      leaves:['Sleep','BJJ','TRT Protocol','Supplements','Biomarkers','Injuries','Gut Health','Pharmacogenomics'] },
+    { id:'business', label:'Business OS', icon:'briefcase', color:'#3b82f6', angle:-18,
+      leaves:['5.15 Framework','MBR','AP2026','EXCO','Talent KIM','Pay Grid','Korn Ferry','Growth Mindset'] },
+    { id:'executives', label:'Executive Team', icon:'users', color:'#f59e0b', angle:54,
+      leaves:['Marcio Costa','Fernando Oliveira','Ivan Galvis','Oscar Padilla','Adriana Favaro'] },
+    { id:'sovereign', label:'Sovereign Arch', icon:'target', color:'#8b5cf6', angle:126,
+      leaves:['Prime Objective','Barbell Strategy','Positive Paranoia','Taleb Axis','4 Epochs','7 Nodes'] },
+    { id:'personal', label:'Personal', icon:'home', color:'#f97316', angle:198,
+      leaves:['Family','Faith','BJJ Schedule','Travel','Bible Plan'] }
+  ];
+
+  const crossLinks = [
+    { from:'health', fromLeaf:'BJJ', to:'personal', toLeaf:'BJJ Schedule', color:'#10b981' },
+    { from:'health', fromLeaf:'Biomarkers', to:'health', toLeaf:'TRT Protocol', color:'#10b981' },
+    { from:'health', fromLeaf:'Supplements', to:'health', toLeaf:'Biomarkers', color:'#10b981' },
+    { from:'business', fromLeaf:'Talent KIM', to:'executives', toLeaf:null, color:'#f59e0b' },
+    { from:'sovereign', fromLeaf:null, to:'business', toLeaf:null, color:'#8b5cf6' },
+    { from:'health', fromLeaf:'Sleep', to:'health', toLeaf:'Injuries', color:'#10b981' }
+  ];
+
+  // ── Mobile: card layout ──
+  if (isMobile) {
+    canvas.innerHTML = '';
+    const mobileWrap = document.createElement('div');
+    mobileWrap.className = 'mm-mobile-layout';
+
+    // Center
+    const hubDiv = document.createElement('div');
+    hubDiv.style.textAlign = 'center';
+    hubDiv.innerHTML = '<div class="mm-center" style="margin:0 auto"><div class="mm-center-name">Antonio</div><div class="mm-center-sub">Wanderley</div></div>';
+    mobileWrap.appendChild(hubDiv);
+
+    clusters.forEach(cluster => {
+      const card = document.createElement('div');
+      card.className = 'mm-mobile-cluster';
+      card.style.borderColor = cluster.color + '25';
+      card.onclick = () => document.getElementById(cluster.id)?.scrollIntoView({ behavior:'smooth' });
+
+      const header = document.createElement('div');
+      header.className = 'mm-mobile-cluster-header';
+      header.innerHTML = `<i data-lucide="${cluster.icon}" style="color:${cluster.color}"></i><span>${cluster.label}</span>`;
+
+      const leavesWrap = document.createElement('div');
+      leavesWrap.className = 'mm-mobile-leaves';
+      cluster.leaves.forEach(leaf => {
+        const tag = document.createElement('div');
+        tag.className = 'mm-mobile-leaf';
+        tag.style.borderColor = cluster.color + '30';
+        tag.style.color = cluster.color + 'cc';
+        tag.textContent = leaf;
+        tag.onmouseenter = () => { tag.style.borderColor = cluster.color + '80'; tag.style.color = cluster.color; };
+        tag.onmouseleave = () => { tag.style.borderColor = cluster.color + '30'; tag.style.color = cluster.color + 'cc'; };
+        leavesWrap.appendChild(tag);
+      });
+
+      card.appendChild(header);
+      card.appendChild(leavesWrap);
+      mobileWrap.appendChild(card);
+    });
+
+    canvas.appendChild(mobileWrap);
+    lucide.createIcons();
+    return;
+  }
+
+  // ── Desktop: radial layout with bezier curves ──
+  canvas.innerHTML = '<svg class="mindmap-svg" id="mindmapSvg"></svg>';
+  const svgEl = canvas.querySelector('.mindmap-svg');
+
+  // Add glow filter
+  svgEl.innerHTML = `<defs>
+    <filter id="glow"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>`;
+
   const W = canvas.offsetWidth;
   const H = canvas.offsetHeight;
   const cx = W / 2, cy = H / 2;
 
-  // Node definitions
-  const clusters = [
-    { id:'health', label:'Health OS', icon:'heart', color:'#10b981', angle:0,
-      leaves:['Sleep','BJJ','TRT Protocol','Supplements','Biomarkers','Injuries','Gut Health','Pharmacogenomics'] },
-    { id:'business', label:'Business OS', icon:'briefcase', color:'#3b82f6', angle:72,
-      leaves:['5.15 Framework','MBR','AP2026','EXCO','Talent KIM','Pay Grid','Korn Ferry','Growth Mindset'] },
-    { id:'executives', label:'Executive Team', icon:'users', color:'#f59e0b', angle:144,
-      leaves:['Marcio Costa','Fernando Oliveira','Ivan Galvis','Oscar Padilla','Adriana Favaro'] },
-    { id:'sovereign', label:'Sovereign Arch', icon:'target', color:'#8b5cf6', angle:216,
-      leaves:['Prime Objective','Barbell Strategy','Positive Paranoia','Taleb Axis','4 Epochs','7 Nodes'] },
-    { id:'personal', label:'Personal', icon:'home', color:'#f97316', angle:288,
-      leaves:['Family','Faith','BJJ Schedule','Travel','Bible Plan'] }
-  ];
+  const clusterDist = Math.min(W, H) * 0.27;
+  const leafDist = Math.min(W, H) * 0.15;
+  const positions = {};
 
-  // Cross connections
-  const crossLinks = [
-    ['health-BJJ','health-Injuries'],['health-Injuries','health-Sleep'],
-    ['business-Talent KIM','executives-exec'],
-    ['sovereign-sov','business-bus'],
-    ['health-TRT Protocol','health-Biomarkers'],['health-Biomarkers','health-Supplements']
-  ];
+  // Helper: bezier path between two points with curvature
+  function bezier(x1, y1, x2, y2, curvature) {
+    const mx = (x1 + x2) / 2;
+    const my = (y1 + y2) / 2;
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const cx1 = mx - dy * curvature;
+    const cy1 = my + dx * curvature;
+    return `M${x1},${y1} Q${cx1},${cy1} ${x2},${y2}`;
+  }
 
-  const clusterRadius = Math.min(W, H) * 0.28;
-  const leafRadius = Math.min(W, H) * 0.14;
-  const nodePositions = {};
+  function makePath(d, color, cls, delay, width) {
+    const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+    path.setAttribute('d', d);
+    path.setAttribute('stroke', color);
+    path.setAttribute('stroke-width', width || '1.5');
+    if (cls) path.setAttribute('class', cls);
+    const len = path.getTotalLength ? path.getTotalLength() : 200;
+    path.style.strokeDasharray = len;
+    path.style.strokeDashoffset = len;
+    path.style.transition = `stroke-dashoffset ${0.8 + delay * 0.15}s ease ${delay * 0.12}s, opacity .4s, stroke-width .4s`;
+    requestAnimationFrame(() => { path.style.strokeDashoffset = '0'; });
+    svgEl.appendChild(path);
+    return path;
+  }
 
-  // Center node
-  nodePositions['center'] = { x: cx, y: cy };
-  const centerEl = document.createElement('div');
-  centerEl.className = 'mm-node';
-  centerEl.style.left = cx + 'px';
-  centerEl.style.top = cy + 'px';
-  centerEl.innerHTML = '<div class="mm-center"><div class="mm-center-name">Antonio</div><div class="mm-center-sub">Wanderley</div></div>';
-  canvas.appendChild(centerEl);
+  // ── Center node ──
+  positions['center'] = { x: cx, y: cy };
+  const hubEl = document.createElement('div');
+  hubEl.className = 'mm-hub';
+  hubEl.style.left = cx + 'px';
+  hubEl.style.top = cy + 'px';
+  hubEl.innerHTML = '<div class="mm-center"><div class="mm-center-name">Antonio</div><div class="mm-center-sub">Wanderley</div></div>';
+  canvas.appendChild(hubEl);
 
+  // ── Build clusters ──
   clusters.forEach((cluster, ci) => {
-    const ang = (cluster.angle - 90) * Math.PI / 180;
-    const clx = cx + Math.cos(ang) * clusterRadius;
-    const cly = cy + Math.sin(ang) * clusterRadius;
+    const ang = cluster.angle * Math.PI / 180;
+    const clx = cx + Math.cos(ang) * clusterDist;
+    const cly = cy + Math.sin(ang) * clusterDist;
+    positions[cluster.id] = { x: clx, y: cly };
 
-    nodePositions[cluster.id + '-bus'] = { x: clx, y: cly };
-    nodePositions[cluster.id + '-sov'] = { x: clx, y: cly };
-    nodePositions[cluster.id + '-exec'] = { x: clx, y: cly };
-    nodePositions[cluster.id] = { x: clx, y: cly };
+    // Line center → cluster (subtle curve)
+    makePath(bezier(cx, cy, clx, cly, 0.05), cluster.color, 'conn-center conn-' + cluster.id, ci, '1.5');
 
-    // Draw line from center to cluster
-    const line = document.createElementNS('http://www.w3.org/2000/svg','line');
-    line.setAttribute('x1', cx); line.setAttribute('y1', cy);
-    line.setAttribute('x2', clx); line.setAttribute('y2', cly);
-    line.setAttribute('stroke', cluster.color);
-    line.setAttribute('stroke-width', '1.5');
-    line.style.strokeDasharray = '100';
-    line.style.strokeDashoffset = '100';
-    line.style.animation = `drawLine ${1 + ci * 0.3}s ease ${ci * 0.2}s forwards`;
-    svg.appendChild(line);
+    // Animated glow dot at cluster end
+    const dot = document.createElementNS('http://www.w3.org/2000/svg','circle');
+    dot.setAttribute('cx', clx);
+    dot.setAttribute('cy', cly);
+    dot.setAttribute('r', '4');
+    dot.setAttribute('fill', cluster.color);
+    dot.setAttribute('filter', 'url(#glow)');
+    dot.setAttribute('class', 'glow-dot');
+    dot.style.transitionDelay = (ci * 0.15) + 's';
+    svgEl.appendChild(dot);
+    setTimeout(() => dot.classList.add('active'), 600 + ci * 150);
 
-    // Cluster node
+    // Cluster DOM node
     const clNode = document.createElement('div');
     clNode.className = 'mm-node';
     clNode.style.left = clx + 'px';
     clNode.style.top = cly + 'px';
     clNode.style.color = cluster.color;
-    clNode.style.animationDelay = (ci * 0.2) + 's';
-    clNode.innerHTML = `<div class="mm-cluster" style="border-color:${cluster.color}30"><i data-lucide="${cluster.icon}" style="color:${cluster.color}"></i><span class="mm-cluster-label">${cluster.label}</span></div><div class="mm-ring" style="border-color:${cluster.color}"></div>`;
-    clNode.onclick = () => document.getElementById(cluster.id).scrollIntoView({ behavior:'smooth' });
-    clNode.onmouseenter = () => { clNode.querySelector('.mm-ring').style.opacity = '1'; highlightConnections(cluster.id); };
-    clNode.onmouseleave = () => { clNode.querySelector('.mm-ring').style.opacity = '0'; resetConnections(); };
+    clNode.innerHTML = `<div class="mm-cluster" style="border-color:${cluster.color}30;color:${cluster.color}"><i data-lucide="${cluster.icon}" style="color:${cluster.color}"></i><span class="mm-cluster-label">${cluster.label}</span></div>`;
+    clNode.onclick = () => document.getElementById(cluster.id)?.scrollIntoView({ behavior:'smooth' });
+    clNode.onmouseenter = () => highlightCluster(cluster.id);
+    clNode.onmouseleave = () => resetHighlight();
     canvas.appendChild(clNode);
 
-    // Leaf nodes
+    // ── Leaf nodes ──
     const leafCount = cluster.leaves.length;
-    const leafSpread = Math.PI * 0.6;
-    const startAngle = ang - leafSpread / 2;
+    const spreadAngle = Math.min(Math.PI * 0.7, Math.PI * 0.12 * leafCount);
+    const startAng = ang - spreadAngle / 2;
 
     cluster.leaves.forEach((leaf, li) => {
-      const la = startAngle + (leafSpread / (leafCount - 1 || 1)) * li;
-      const lx = clx + Math.cos(la) * leafRadius;
-      const ly = cly + Math.sin(la) * leafRadius;
+      const la = leafCount === 1 ? ang : startAng + (spreadAngle / (leafCount - 1)) * li;
+      const lx = clx + Math.cos(la) * leafDist;
+      const ly = cly + Math.sin(la) * leafDist;
+      const leafKey = cluster.id + '-' + leaf.replace(/\s+/g,'_');
+      positions[leafKey] = { x: lx, y: ly };
 
-      const leafKey = cluster.id + '-' + leaf;
-      nodePositions[leafKey] = { x: lx, y: ly };
+      // Bezier from cluster to leaf
+      makePath(
+        bezier(clx, cly, lx, ly, 0.08),
+        cluster.color, 'conn-' + cluster.id + ' leaf-conn', ci + li * 0.3, '0.8'
+      );
 
-      // Line from cluster to leaf
-      const lline = document.createElementNS('http://www.w3.org/2000/svg','line');
-      lline.setAttribute('x1', clx); lline.setAttribute('y1', cly);
-      lline.setAttribute('x2', lx); lline.setAttribute('y2', ly);
-      lline.setAttribute('stroke', cluster.color);
-      lline.setAttribute('stroke-width', '0.7');
-      lline.setAttribute('class', 'conn-' + cluster.id);
-      lline.style.strokeDasharray = '60';
-      lline.style.strokeDashoffset = '60';
-      lline.style.animation = `drawLine ${0.8}s ease ${0.5 + ci * 0.2 + li * 0.08}s forwards`;
-      svg.appendChild(lline);
-
-      // Leaf element
       const leafEl = document.createElement('div');
-      leafEl.className = 'mm-node';
+      leafEl.className = 'mm-leaf-node';
+      leafEl.dataset.cluster = cluster.id;
       leafEl.style.left = lx + 'px';
       leafEl.style.top = ly + 'px';
-      leafEl.style.animationDelay = (0.5 + ci * 0.2 + li * 0.1) + 's';
-      leafEl.innerHTML = `<div class="mm-leaf" style="color:${cluster.color}80">${leaf}</div>`;
-      leafEl.onclick = () => document.getElementById(cluster.id).scrollIntoView({ behavior:'smooth' });
+      leafEl.innerHTML = `<div class="mm-leaf" style="color:${cluster.color}90;border-color:${cluster.color}20">${leaf}</div>`;
+      leafEl.onclick = () => document.getElementById(cluster.id)?.scrollIntoView({ behavior:'smooth' });
+      leafEl.onmouseenter = () => {
+        leafEl.querySelector('.mm-leaf').style.borderColor = cluster.color + '60';
+        leafEl.querySelector('.mm-leaf').style.color = cluster.color;
+        highlightCluster(cluster.id);
+      };
+      leafEl.onmouseleave = () => {
+        leafEl.querySelector('.mm-leaf').style.borderColor = cluster.color + '20';
+        leafEl.querySelector('.mm-leaf').style.color = cluster.color + '90';
+        resetHighlight();
+      };
       canvas.appendChild(leafEl);
     });
   });
 
-  // Cross-connection lines
-  crossLinks.forEach(([from, to]) => {
-    const p1 = nodePositions[from];
-    const p2 = nodePositions[to];
+  // ── Cross-connections (curved, subtle) ──
+  crossLinks.forEach((link, i) => {
+    const fromKey = link.fromLeaf ? link.from + '-' + link.fromLeaf.replace(/\s+/g,'_') : link.from;
+    const toKey = link.toLeaf ? link.to + '-' + link.toLeaf.replace(/\s+/g,'_') : link.to;
+    const p1 = positions[fromKey];
+    const p2 = positions[toKey];
     if (!p1 || !p2) return;
-    const cline = document.createElementNS('http://www.w3.org/2000/svg','line');
-    cline.setAttribute('x1', p1.x); cline.setAttribute('y1', p1.y);
-    cline.setAttribute('x2', p2.x); cline.setAttribute('y2', p2.y);
-    cline.setAttribute('stroke', '#4a6585');
-    cline.setAttribute('stroke-width', '0.5');
-    cline.setAttribute('class', 'cross');
-    cline.style.strokeDasharray = '80';
-    cline.style.strokeDashoffset = '80';
-    cline.style.animation = 'drawLine 1.5s ease 1.5s forwards';
-    svg.appendChild(cline);
+    makePath(bezier(p1.x, p1.y, p2.x, p2.y, 0.15), link.color || '#4a6585', 'cross cross-' + link.from + ' cross-' + link.to, 8 + i, '0.8');
   });
 
-  // Re-init icons for dynamically added nodes
   lucide.createIcons();
 }
 
-function highlightConnections(clusterId) {
-  document.querySelectorAll('.conn-' + clusterId).forEach(l => l.classList.add('active'));
+function highlightCluster(clusterId) {
+  // Dim everything
+  document.querySelectorAll('.mindmap-svg path').forEach(p => { p.style.opacity = '.08'; });
+  document.querySelectorAll('.mm-leaf-node').forEach(n => { n.style.opacity = '.25'; });
+  document.querySelectorAll('.mm-node').forEach(n => { n.style.opacity = '.35'; });
+  document.querySelectorAll('.glow-dot').forEach(d => { d.style.opacity = '.1'; });
+  // Highlight this cluster's connections
+  document.querySelectorAll('.conn-' + clusterId).forEach(p => { p.classList.add('active'); p.style.opacity = ''; });
+  document.querySelectorAll('.cross-' + clusterId).forEach(p => { p.classList.add('active'); p.style.opacity = ''; });
+  // Highlight this cluster's nodes
+  document.querySelectorAll('.mm-leaf-node[data-cluster="' + clusterId + '"]').forEach(n => { n.style.opacity = '1'; });
+  document.querySelectorAll('.mm-node').forEach(n => { if (n.style.color && n.querySelector('[data-lucide]')) n.style.opacity = '1'; });
+  // Keep center hub visible
+  document.querySelectorAll('.mm-hub').forEach(h => { h.style.opacity = '1'; });
 }
-function resetConnections() {
-  document.querySelectorAll('.mindmap-svg line').forEach(l => l.classList.remove('active'));
+function resetHighlight() {
+  document.querySelectorAll('.mindmap-svg path').forEach(p => { p.classList.remove('active'); p.style.opacity = ''; });
+  document.querySelectorAll('.mm-leaf-node, .mm-node, .mm-hub, .glow-dot').forEach(n => { n.style.opacity = ''; });
 }
 </script>
 </body>
